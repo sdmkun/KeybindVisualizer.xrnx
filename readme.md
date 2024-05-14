@@ -1,0 +1,2 @@
+# Keybind Visualizer
+Renoiseのキーボードショートカットレイアウトを可視化するRenoise用ツールです。

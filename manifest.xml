@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<RenoiseScriptingTool doc_version="0">
+  <ApiVersion>6.1</ApiVersion>
+  <Id>com.renoise.KeybindVisualizer</Id>
+  <Version>0.1</Version>
+  <Author>sdmkun [wastelandxxx@gmail.com]</Author>
+  <Name>Keybind Visualizer</Name>
+  <Category>Utility</Category>
+  <Description>Simple tool that visualize key bindings(shortcuts) to learn or refer them.</Description>
+  <Platform>Windows, Mac, Linux</Platform>
+</RenoiseScriptingTool>
