@@ -1,11 +1,12 @@
---[[============================================================================
-main.lua
-============================================================================]]--
-
 local vb
 local buttons
 local key_bindings
 local original_texts
+local key_states = {
+  control = false,
+  alt = false,
+  shift = false
+}
 
 _clibroot = "source/cLib/classes/"
 
@@ -159,35 +160,20 @@ local modifier_states = {
 local function update_button_colors()
   for key, button_info in pairs(buttons) do
     local key_lower = key:lower()
-    if key_lower == "ctrl" then
-      if modifier_states.control then
-        button_info.button.color = { 127, 127, 255 } -- 青色
-      else
-        button_info.button.color = { 63, 63, 127 } -- 暗い青色
-      end
-    elseif key_lower == "alt" then
-      if modifier_states.alt then
-        button_info.button.color = { 127, 255, 127 } -- 緑色
-      else
-        button_info.button.color = { 63, 127, 63 } -- 暗い緑色
-      end
-    elseif key_lower == "shift" then
-      if modifier_states.shift then
-        button_info.button.color = { 255, 127, 127 } -- 赤色
-      else
-        button_info.button.color = { 127, 63, 63 } -- 暗い赤色
-      end
-    elseif button_info.text_element.text == "" then
-      button_info.button.color = { 102, 102, 102 } -- 無効状態の色（灰色）
+    if key_lower == "ctrl" and modifier_states.control then
+      button_info.button.color = { 127, 127, 255 } -- 青色
+    elseif key_lower == "alt" and modifier_states.alt then
+      button_info.button.color = { 127, 255, 127 } -- 緑色
+    elseif key_lower == "shift" and modifier_states.shift then
+      button_info.button.color = { 255, 127, 127 } -- 赤色
     else
-      button_info.button.color = { 53, 53, 53 }  -- デフォルト色（暗い灰色）
+      if button_info.text_element.text == "" then
+        button_info.button.color = { 53, 53, 53 }  -- もっと暗い色（灰色）
+      else
+        button_info.button.color = { 102, 102, 102 } -- デフォルト色（暗い灰色）
+      end
     end
   end
-end
-
-local function toggle_modifier_state(modifier)
-  modifier_states[modifier] = not modifier_states[modifier]
-  update_button_colors()
 end
 
 local function get_current_modifiers()
@@ -202,41 +188,6 @@ local function get_current_modifiers()
     table.insert(modifiers, "control")
   end
   return table.concat(modifiers, "+")
-end
-
-local function key_handler(dialog, key)
-  -- 修飾キーのトグル
-  local key_lower = key.name:lower()
-  if key_lower == "lcontrol" or key_lower == "rcontrol" then
-    toggle_modifier_state("control")
-  elseif key_lower == "lalt" or key_lower == "ralt" then
-    toggle_modifier_state("alt")
-  elseif key_lower == "lshift" or key_lower == "rshift" then
-    toggle_modifier_state("shift")
-  end
-
-  -- 現在の修飾キー状態を取得
-  local modifiers = get_current_modifiers()
-
-  -- ボタンのテキストを更新
-  for key_name, button_info in pairs(buttons) do
-    local key_text = get_binding_text(modifiers, key_name)
-    if key_text == key_name then
-      key_text = ""
-    end
-    button_info.text_element.text = key_text
-    if key_text == "" then
-      button_info.button.color = { 102, 102, 102 } -- 無効状態の色（灰色）
-    else
-      button_info.button.color = { 53, 53, 53 }  -- デフォルト色（暗い灰色）
-    end
-    update_button_colors()
-  end
-
-  -- close on escape...
-  if (key.modifiers == "" and key.name == "esc") then
-    dialog:close()
-  end
 end
 
 -- ボタンを作成する関数の修正
@@ -259,36 +210,25 @@ local function create_button(key, binding_text, button_width, button_height)
 
   local button = vb:button {
     width = button_width,
-    height = button_height,
-    notifier = function()
-      local key_lower = key:lower()
-      if key_lower == "ctrl" then
-        toggle_modifier_state("control")
-      elseif key_lower == "alt" then
-        toggle_modifier_state("alt")
-      elseif key_lower == "shift" then
-        toggle_modifier_state("shift")
-      end
-      renoise.app():show_status("Key pressed: " .. key)
-      -- 現在の修飾キー状態を取得
-      local modifiers = get_current_modifiers()
-      -- ボタンのテキストを更新
-      for key_name, button_info in pairs(buttons) do
-        local key_text = get_binding_text(modifiers, key_name)
-        button_info.text_element.text = key_text
-      end
-      update_button_colors()
-    end
+    height = button_height
   }
   button:add_child(text_element)
   button:add_child(key_element)
 
   if binding_text == key then
     text_element.text = ""
-    button.color = { 102, 102, 102 } -- もっと暗い色（灰色）
+    button.color = { 53, 53, 53 } -- もっと暗い色（灰色）
   end
 
   return button, text_element
+end
+
+function update_binding_text()
+  local modifiers = get_current_modifiers()
+  -- ボタンのテキストを更新
+  for key_name, button_info in pairs(buttons) do
+    button_info.text_element.text = get_binding_text(modifiers, key_name)
+  end
 end
 
 -- 仮想キーボードを表示する関数の修正
@@ -331,26 +271,10 @@ function show_virtual_keyboard()
           button_width = 60 * 3.5     -- "Caps"
         elseif row_index == 5 and key_index == 1 then
           button_width = 60 * 4.0     -- "Shift"
-        elseif row_index == 6 and key_index == 1 then
-          button_width = 60 * 3.0     -- "Ctrl"
-        elseif row_index == 6 and key_index == 2 then
-          button_width = 60 * 3.0     -- "Win"
-        elseif row_index == 6 and key_index == 3 then
-          button_width = 60 * 3.0     -- "Alt"
-        elseif row_index == 6 and key_index == 4 then
-          button_width = 60 * 3.0     -- "無変換"
         elseif row_index == 6 and key_index == 5 then
           button_width = 60 * 6.0     -- "Space"
-        elseif row_index == 6 and key_index == 6 then
-          button_width = 60 * 3.0     -- "変換"
-        elseif row_index == 6 and key_index == 7 then
-          button_width = 60 * 3.0     -- "かな"
-        elseif row_index == 6 and key_index == 8 then
-          button_width = 60 * 3.0     -- "RAlt"
-        elseif row_index == 6 and key_index == 9 then
-          button_width = 60 * 3.0     -- "App"
-        elseif row_index == 6 and key_index == 10 then
-          button_width = 60 * 3.0     -- "RCtrl"
+        elseif row_index == 6 then
+          button_width = 60 * 3.0     -- 最下段のキー
         end
 
         local button_height = 40 * 2 -- ボタンの高さを2倍に
@@ -365,13 +289,43 @@ function show_virtual_keyboard()
   end
 
   -- ダイアログを表示
-  renoise.app():show_custom_dialog(dialog_title, keyboard_view, key_handler)
-
-  -- 初期状態で機能名を表示
-  key_handler(nil, { modifiers = "", name = "" })
+  renoise.app():show_custom_dialog(dialog_title, keyboard_view)
 end
 
+-- タイマーを設定して0.1秒ごとに修飾キーの状態をチェック
+local function check_modifier_keys()
+  local control_pressed = renoise.app().key_modifier_states["control"]
+  local alt_pressed = renoise.app().key_modifier_states["alt"]
+  local shift_pressed = renoise.app().key_modifier_states["shift"]
+
+  if control_pressed == "pressed" then
+    modifier_states.control = true
+  else
+    modifier_states.control = false
+  end
+
+  if alt_pressed == "pressed" then
+    modifier_states.alt = true
+  else
+    modifier_states.alt = false
+  end
+
+  if shift_pressed == "pressed" then
+    modifier_states.shift = true
+  else
+    modifier_states.shift = false
+  end
+
+  update_binding_text()
+  update_button_colors()
+end
+
+-- 0.1秒ごとにcheck_modifier_keysを実行するタイマーを設定
+renoise.tool().app_idle_observable:add_notifier(function()
+  check_modifier_keys()
+end)
+
 -- 初期設定
--- renoise.tool().app_new_document_observable:add_notifier(function()
-show_virtual_keyboard()
--- end)
+renoise.tool().app_new_document_observable:add_notifier(function()
+  show_virtual_keyboard()
+end)
