@@ -7,6 +7,7 @@ local key_states = {
   alt = false,
   shift = false
 }
+local context_checkboxes = {}
 
 _clibroot = "source/cLib/classes/"
 
@@ -41,7 +42,13 @@ local function load_key_bindings(filename)
         local key = keybinding.kids[3].kids[1].value
 
         local full_key = key:gsub(" ", ""):lower() -- 空白を削除し、小文字に変換
-        bindings[full_key] = identifier .. ":" .. topic .. ":" .. binding
+
+        -- 既に存在するキーのエントリがある場合、追加する
+        if bindings[full_key] then
+          table.insert(bindings[full_key], identifier .. ":" .. topic .. ":" .. binding)
+        else
+          bindings[full_key] = { identifier .. ":" .. topic .. ":" .. binding }
+        end
       end
     end
   end
@@ -77,30 +84,42 @@ end
 
 -- 音階名を表示するためのテーブル
 local note_names = {
-  z = "C",
-  s = "C#",
-  x = "D",
-  d = "D#",
-  c = "E",
-  v = "F",
-  g = "F#",
-  b = "G",
-  h = "G#",
-  n = "A",
-  j = "A#",
-  m = "B",
-  q = "C",
-  ["2"] = "C#",
-  w = "D",
-  ["3"] = "D#",
-  e = "E",
-  r = "F",
-  ["5"] = "F#",
-  t = "G",
-  ["6"] = "G#",
-  y = "A",
-  ["7"] = "A#",
-  u = "B"
+  z = "C-3",
+  s = "C#3",
+  x = "D-3",
+  d = "D#3",
+  c = "E-3",
+  v = "F-3",
+  g = "F#3",
+  b = "G-3",
+  h = "G#3",
+  n = "A-3",
+  j = "A#3",
+  m = "B-3",
+  [","] = "C-4",
+  l = "C#4",
+  ["."] = "D-4",
+  [";"] = "D#4",
+  ["/"] = "E-4",
+  q = "C-4",
+  ["2"] = "C#4",
+  w = "D-4",
+  ["3"] = "D#4",
+  e = "E-4",
+  r = "F-4",
+  ["5"] = "F#4",
+  t = "G-4",
+  ["6"] = "G#-4",
+  y = "A-4",
+  ["7"] = "A#4",
+  u = "B-4",
+  i = "C-5",
+  ["9"] = "C#5",
+  o = "D-5",
+  ["0"] = "D#5",
+  p = "E-5",
+  ["@"] = "F-5",
+  ["["] = "G-5",
 }
 
 -- 機能名を改行する関数
@@ -141,7 +160,20 @@ end
 
 local function get_binding_text(modifiers, key_name)
   local full_key = (modifiers:gsub(" ", "") == "" and key_name or (modifiers:gsub(" ", "") .. "+" .. key_name)):lower()
-  local text = key_bindings[full_key] or ""
+  local texts = key_bindings[full_key] or { original_texts[key_name:lower()] or key_name }
+
+  -- チェックボックスの状態を確認
+  local show_texts = {}
+  for _, text in ipairs(texts) do
+    for label, checkbox in pairs(context_checkboxes) do
+      if checkbox.value and text:find(label .. ":") then
+        table.insert(show_texts, text)
+        break
+      end
+    end
+  end
+
+  local text = show_texts[1] or ""
 
   -- 修飾キーが押されていない場合は音階名を表示
   if modifiers == "" and note_names[key_name:lower()] then
@@ -176,6 +208,11 @@ local function update_button_colors()
   end
 end
 
+local function toggle_modifier_state(modifier)
+  modifier_states[modifier] = not modifier_states[modifier]
+  update_button_colors()
+end
+
 local function get_current_modifiers()
   local modifiers = {}
   if modifier_states.shift then
@@ -188,6 +225,32 @@ local function get_current_modifiers()
     table.insert(modifiers, "control")
   end
   return table.concat(modifiers, "+")
+end
+
+local function key_handler(dialog, key)
+  -- 修飾キーのトグル
+  local key_lower = key.name:lower()
+  if key_lower == "lcontrol" or key_lower == "rcontrol" then
+    toggle_modifier_state("control")
+  elseif key_lower == "lalt" or key_lower == "ralt" then
+    toggle_modifier_state("alt")
+  elseif key_lower == "lshift" or key_lower == "rshift" then
+    toggle_modifier_state("shift")
+  end
+
+  -- 現在の修飾キー状態を取得
+  local modifiers = get_current_modifiers()
+
+  -- ボタンのテキストを更新
+  for key_name, button_info in pairs(buttons) do
+    local key_text = get_binding_text(modifiers, key_name)
+    if key_text == "" then
+      button_info.button.color = { 53, 53, 53 }    -- もっと暗い色（灰色）
+    else
+      button_info.button.color = { 102, 102, 102 } -- デフォルト色（暗い灰色）
+    end
+    button_info.text_element.text = key_text
+  end
 end
 
 -- ボタンを作成する関数の修正
@@ -210,7 +273,34 @@ local function create_button(key, binding_text, button_width, button_height)
 
   local button = vb:button {
     width = button_width,
-    height = button_height
+    height = button_height,
+    notifier = function()
+      local key_lower = key:lower()
+      if key_lower == "ctrl" then
+        toggle_modifier_state("control")
+      elseif key_lower == "alt" then
+        toggle_modifier_state("alt")
+      elseif key_lower == "shift" then
+        toggle_modifier_state("shift")
+      end
+      renoise.app():show_status("Key pressed: " .. key)
+      -- 現在の修飸キー状態を取得
+      local modifiers = get_current_modifiers()
+      -- ボタンのテキストを更新
+      for key_name, button_info in pairs(buttons) do
+        local key_text = get_binding_text(modifiers, key_name)
+        if key_text == key_name then
+          key_text = ""
+          button_info.button.color = { 53, 53, 53 }  -- もっと暗い色（灰色）
+        elseif key_text == "" then
+          button_info.button.color = { 102, 102, 102 } -- 暗い色（灰色）
+        else
+          button_info.button.color = { 153, 153, 153 } -- デフォルト色（暗い灰色）
+        end
+        button_info.text_element.text = key_text
+      end
+      update_button_colors() -- 修飾キーの状態に基づいてボタンの色を更新
+    end
   }
   button:add_child(text_element)
   button:add_child(key_element)
@@ -223,14 +313,6 @@ local function create_button(key, binding_text, button_width, button_height)
   return button, text_element
 end
 
-function update_binding_text()
-  local modifiers = get_current_modifiers()
-  -- ボタンのテキストを更新
-  for key_name, button_info in pairs(buttons) do
-    button_info.text_element.text = get_binding_text(modifiers, key_name)
-  end
-end
-
 -- 仮想キーボードを表示する関数の修正
 function show_virtual_keyboard()
   key_bindings = load_bindings_from_file()
@@ -238,14 +320,38 @@ function show_virtual_keyboard()
   vb = renoise.ViewBuilder()
   local dialog_title = "JIS Virtual Keyboard"
 
+  -- コンテキストチェックボックスの作成
+  local context_labels = {
+    "Global", "Disk Browser", "Pattern Editor", "Sample Editor", "Mixer",
+    "Pattern Sequencer", "Pattern Matrix", "Phrase Editor", "Phrase Map",
+    "Instrument Box", "Sample Keyzones", "Sample FX Mixer", "Sample Modulation Matrix",
+    "Automation", "DSP Chain"
+  }
+
+  local context_view = vb:column {
+    margin = renoise.ViewBuilder.DEFAULT_DIALOG_MARGIN,
+    spacing = renoise.ViewBuilder.DEFAULT_CONTROL_SPACING
+  }
+
+  for _, label in ipairs(context_labels) do
+    local checkbox = vb:checkbox {
+      value = false,
+      notifier = function()
+        key_handler(nil, { modifiers = "", name = "" })
+      end
+    }
+    context_checkboxes[label] = checkbox
+    context_view:add_child(vb:row { vb:text { text = label }, checkbox })
+  end
+
   -- JIS配列キーボードの定義
   local jis_keycodes = {
     { "Esc", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12" },
-    { "半/全", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "^", "¥", "BackSpace" },
-    { "Tab", "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "@", "[", "", "Enter" },
-    { "Caps", "A", "S", "D", "F", "G", "H", "J", "K", "L", ";", ":", "]" },
-    { "Shift", "Z", "X", "C", "V", "B", "N", "M", ",", ".", "/", "\\", "RShift" },
-    { "Ctrl", "Win", "Alt", "無変換", "Space", "変換", "かな", "RAlt", "App", "RCtrl" }
+    { "半/全", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "prevtrack", "\\", "Back" },
+    { "Tab", "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "nil", "@", "Return" },
+    { "Caps", "A", "S", "D", "F", "G", "H", "J", "K", "L", ";", "'", "[" },
+    { "Shift", "Z", "X", "C", "V", "B", "N", "M", "comma", "period", "/", "]", "RShift" },
+    { "Ctrl", "Win", "Alt", "無変換", "Space", "変換", "かな", "RAlt", "App", "RControl" }
   }
 
   -- ボタンオブジェクトの辞書
@@ -259,25 +365,25 @@ function show_virtual_keyboard()
     local button_row = vb:row {}
     for key_index, key in ipairs(row) do
       if key ~= "" then
-        local binding_text = key_bindings[key:lower()] or key
+        local binding_text = key_bindings[key:lower()] and key_bindings[key:lower()][1] or key
         binding_text = format_binding_text(binding_text)
 
-        local button_width = 60 * 2.5 -- デフォルトの幅を2.5倍に
+        local button_width = 60 * 2.5 -- デフォルトの幅を 2.5 倍に
         if row_index == 2 and key_index == 1 then
-          button_width = 60 * 2.5     -- "半/全"
+          button_width = 60 * 2.0     -- "半/全"
         elseif row_index == 3 and key_index == 1 then
-          button_width = 60 * 3.0     -- "Tab"
+          button_width = 60 * 2.5     -- "Tab"
         elseif row_index == 4 and key_index == 1 then
-          button_width = 60 * 3.5     -- "Caps"
+          button_width = 60 * 3.0     -- "Caps"
         elseif row_index == 5 and key_index == 1 then
-          button_width = 60 * 4.0     -- "Shift"
+          button_width = 60 * 3.5     -- "Shift"
         elseif row_index == 6 and key_index == 5 then
           button_width = 60 * 6.0     -- "Space"
         elseif row_index == 6 then
           button_width = 60 * 3.0     -- 最下段のキー
         end
 
-        local button_height = 40 * 2 -- ボタンの高さを2倍に
+        local button_height = 40 * 2 -- ボタンの高さを 2 倍に
 
         local button, text_element = create_button(key, binding_text, button_width, button_height)
         buttons[key:lower()] = { button = button, text_element = text_element }
@@ -289,38 +395,44 @@ function show_virtual_keyboard()
   end
 
   -- ダイアログを表示
-  renoise.app():show_custom_dialog(dialog_title, keyboard_view)
+  renoise.app():show_custom_dialog(dialog_title, vb:column {
+    context_view,
+    keyboard_view
+  }, key_handler)
+
+  -- 初期状態で機能名を表示
+  key_handler(nil, { modifiers = "", name = "" })
 end
 
--- タイマーを設定して0.1秒ごとに修飾キーの状態をチェック
+-- Tools メニューにダイアログを追加
+renoise.tool():add_menu_entry {
+  name = "Main Menu:Tools:Open JIS Virtual Keyboard",
+  invoke = function() show_virtual_keyboard() end
+}
+
+-- タイマーを設定して 0.1 秒ごとに修飾キーの状態をチェック
 local function check_modifier_keys()
-  local control_pressed = renoise.app().key_modifier_states["control"]
-  local alt_pressed = renoise.app().key_modifier_states["alt"]
-  local shift_pressed = renoise.app().key_modifier_states["shift"]
+  local control_pressed = renoise.app().key_modifier_states("control")
+  local alt_pressed = renoise.app().key_modifier_states("alt")
+  local shift_pressed = renoise.app().key_modifier_states("shift")
 
-  if control_pressed == "pressed" then
-    modifier_states.control = true
-  else
-    modifier_states.control = false
+  if control_pressed ~= key_states.control then
+    key_states.control = control_pressed
+    toggle_modifier_state("control")
   end
 
-  if alt_pressed == "pressed" then
-    modifier_states.alt = true
-  else
-    modifier_states.alt = false
+  if alt_pressed ~= key_states.alt then
+    key_states.alt = alt_pressed
+    toggle_modifier_state("alt")
   end
 
-  if shift_pressed == "pressed" then
-    modifier_states.shift = true
-  else
-    modifier_states.shift = false
+  if shift_pressed ~= key_states.shift then
+    key_states.shift = shift_pressed
+    toggle_modifier_state("shift")
   end
-
-  update_binding_text()
-  update_button_colors()
 end
 
--- 0.1秒ごとにcheck_modifier_keysを実行するタイマーを設定
+-- 0.1 秒ごとに check_modifier_keys を実行するタイマーを設定
 renoise.tool().app_idle_observable:add_notifier(function()
   check_modifier_keys()
 end)
